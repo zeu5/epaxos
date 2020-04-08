@@ -67,8 +67,8 @@ type LeaderBookkeeping struct {
 	nacks           int
 }
 
-func NewReplica(id int, peerAddrList []string, thrifty bool, exec bool, dreply bool, durable bool) *Replica {
-	r := &Replica{genericsmr.NewReplica(id, peerAddrList, thrifty, exec, dreply),
+func NewReplica(id int, peerAddrList []string, masterAddrPort string, thrifty bool, exec bool, dreply bool, durable bool, slave bool) *Replica {
+	r := &Replica{genericsmr.NewReplica(id, peerAddrList, masterAddrPort, thrifty, exec, dreply, slave),
 		make(chan fastrpc.Serializable, genericsmr.CHAN_BUFFER_SIZE),
 		make(chan fastrpc.Serializable, genericsmr.CHAN_BUFFER_SIZE),
 		make(chan fastrpc.Serializable, genericsmr.CHAN_BUFFER_SIZE),

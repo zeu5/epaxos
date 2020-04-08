@@ -42,6 +42,11 @@ type Replica struct {
 	Alive        []bool // connection status
 	Listener     net.Listener
 
+	masterAddr   string
+	MasterConn   net.Conn
+	MasterReader *bufio.Reader
+	MasterWriter *bufio.Writer
+
 	State *state.State
 
 	ProposeChan chan *Propose // channel for client proposals
@@ -53,6 +58,7 @@ type Replica struct {
 	Exec    bool // execute commands?
 	Dreply  bool // reply to client after command has been executed?
 	Beacon  bool // send beacons to detect how fast are the other replicas?
+	Slave   bool // If true, then all messages go to the master and messages are recieved from the master
 
 	Durable     bool     // log to a stable store?
 	StableStore *os.File // file support for the persistent log
@@ -67,7 +73,8 @@ type Replica struct {
 	OnClientConnect chan bool
 }
 
-func NewReplica(id int, peerAddrList []string, thrifty bool, exec bool, dreply bool) *Replica {
+func NewReplica(id int, peerAddrList []string, masterAddr string, thrifty bool, exec bool, dreply bool, slave bool) *Replica {
+
 	r := &Replica{
 		len(peerAddrList),
 		int32(id),
@@ -76,6 +83,10 @@ func NewReplica(id int, peerAddrList []string, thrifty bool, exec bool, dreply b
 		make([]*bufio.Reader, len(peerAddrList)),
 		make([]*bufio.Writer, len(peerAddrList)),
 		make([]bool, len(peerAddrList)),
+		nil,
+		masterAddr,
+		nil,
+		nil,
 		nil,
 		state.InitState(),
 		make(chan *Propose, CHAN_BUFFER_SIZE),
@@ -86,6 +97,7 @@ func NewReplica(id int, peerAddrList []string, thrifty bool, exec bool, dreply b
 		dreply,
 		false,
 		false,
+		slave,
 		nil,
 		make([]int32, len(peerAddrList)),
 		make(map[uint8]*RPCPair),
@@ -118,6 +130,51 @@ func (r *Replica) BeTheLeader(args *genericsmrproto.BeTheLeaderArgs, reply *gene
 }
 
 /* ============= */
+
+func (r *Replica) ConnectToMaster() {
+
+	var b [4]byte
+	bs := b[:4]
+
+	for done := false; !done; {
+		if conn, err := net.Dial("tcp", r.masterAddr); err == nil {
+			r.MasterConn = conn
+			done = true
+		} else {
+			time.Sleep(1e9)
+		}
+	}
+	binary.LittleEndian.PutUint32(bs, uint32(r.Id))
+	if _, err := r.MasterConn.Write(bs); err != nil {
+		fmt.Println("Write id error:", err)
+	}
+
+	r.MasterReader = bufio.NewReader(r.MasterConn)
+	r.MasterWriter = bufio.NewWriter(r.MasterConn)
+
+	go r.masterListener(r.MasterReader)
+}
+
+func (r *Replica) masterListener(reader *bufio.Reader) {
+	var msgType uint8
+	var err error = nil
+
+	for !r.Shutdown {
+		if msgType, err = reader.ReadByte(); err != nil {
+			break
+		}
+
+		if rpair, present := r.rpcTable[msgType]; present {
+			obj := rpair.Obj.New()
+			if err = obj.Unmarshal(reader); err != nil {
+				break
+			}
+			rpair.Chan <- obj
+		} else {
+			log.Println("Error: received unknown message type")
+		}
+	}
+}
 
 func (r *Replica) ConnectToPeers() {
 	var b [4]byte
@@ -319,6 +376,17 @@ func (r *Replica) RegisterRPC(msgObj fastrpc.Serializable, notify chan fastrpc.S
 	r.rpcCode++
 	r.rpcTable[code] = &RPCPair{msgObj, notify}
 	return code
+}
+
+func (r *Replica) SendMsgMaster(peerId int32, code uint8, msg fastrpc.Serializable) {
+	var b [4]byte
+	bs := b[:4]
+
+	binary.LittleEndian.PutUint32(bs, uint32(peerId))
+	r.MasterWriter.Write(bs)
+	r.MasterWriter.WriteByte(code)
+	msg.Marshal(r.MasterWriter)
+	r.MasterWriter.Flush()
 }
 
 func (r *Replica) SendMsg(peerId int32, code uint8, msg fastrpc.Serializable) {

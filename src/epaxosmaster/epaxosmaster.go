@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/binary"
+	"epaxosproto"
 	"fastrpc"
 	"flag"
 	"fmt"
@@ -47,6 +48,23 @@ type Master struct {
 	writers     []*bufio.Writer
 	messagePool chan *Message
 	listener    net.Listener
+}
+
+func init() {
+	msgTable = make(map[uint8]fastrpc.Serializable)
+	count := genericsmrproto.GENERIC_SMR_BEACON_REPLY + 1
+
+	msgTable[count] = new(epaxosproto.Prepare)
+	msgTable[count+1] = new(epaxosproto.PrepareReply)
+	msgTable[count+2] = new(epaxosproto.PreAccept)
+	msgTable[count+3] = new(epaxosproto.PreAcceptReply)
+	msgTable[count+4] = new(epaxosproto.PreAcceptOK)
+	msgTable[count+5] = new(epaxosproto.Accept)
+	msgTable[count+6] = new(epaxosproto.AcceptReply)
+	msgTable[count+7] = new(epaxosproto.Commit)
+	msgTable[count+8] = new(epaxosproto.CommitShort)
+	msgTable[count+9] = new(epaxosproto.TryPreAccept)
+	msgTable[count+10] = new(epaxosproto.TryPreAcceptReply)
 }
 
 func main() {

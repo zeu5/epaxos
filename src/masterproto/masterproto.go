@@ -9,6 +9,7 @@ type RegisterReply struct {
 	ReplicaId int
 	NodeList  []string
 	Ready     bool
+	Slave     bool
 }
 
 type GetLeaderArgs struct {

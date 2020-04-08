@@ -74,8 +74,8 @@ type LeaderBookkeeping struct {
 	cstructs      [][]int32
 }
 
-func NewReplica(id int, peerAddrList []string, thrifty bool, exec bool, dreply bool) *Replica {
-	r := &Replica{genericsmr.NewReplica(id, peerAddrList, thrifty, exec, dreply),
+func NewReplica(id int, peerAddrList []string, masterAddrPort string, thrifty bool, exec bool, dreply bool, slave bool) *Replica {
+	r := &Replica{genericsmr.NewReplica(id, peerAddrList, masterAddrPort, thrifty, exec, dreply, slave),
 		make(chan *gpaxosproto.Prepare, CHAN_BUFFER_SIZE),
 		make(chan *gpaxosproto.M_1a, CHAN_BUFFER_SIZE),
 		make(chan *gpaxosproto.M_1b, CHAN_BUFFER_SIZE),

@@ -118,9 +118,9 @@ type LeaderBookkeeping struct {
 	tpaOKs            int
 }
 
-func NewReplica(id int, peerAddrList []string, thrifty bool, exec bool, dreply bool, beacon bool, durable bool) *Replica {
+func NewReplica(id int, peerAddrList []string, masterAddrPort string, thrifty bool, exec bool, dreply bool, beacon bool, durable bool, slave bool) *Replica {
 	r := &Replica{
-		genericsmr.NewReplica(id, peerAddrList, thrifty, exec, dreply),
+		genericsmr.NewReplica(id, peerAddrList, masterAddrPort, thrifty, exec, dreply, slave),
 		make(chan fastrpc.Serializable, genericsmr.CHAN_BUFFER_SIZE),
 		make(chan fastrpc.Serializable, genericsmr.CHAN_BUFFER_SIZE),
 		make(chan fastrpc.Serializable, genericsmr.CHAN_BUFFER_SIZE),
@@ -270,6 +270,9 @@ var conflicted, weird, slow, happy int
 ************************************/
 
 func (r *Replica) run() {
+	if r.Slave {
+		r.ConnectToMaster()
+	}
 	r.ConnectToPeers()
 
 	dlog.Println("Waiting for client connections")
@@ -704,8 +707,8 @@ func (r *Replica) updateConflicts(cmds []state.Command, replica int32, instance 
 				r.conflicts[replica][cmds[i].K] = instance
 			}
 		} else {
-            r.conflicts[replica][cmds[i].K] = instance
-        }
+			r.conflicts[replica][cmds[i].K] = instance
+		}
 		if s, present := r.maxSeqPerKey[cmds[i].K]; present {
 			if s < seq {
 				r.maxSeqPerKey[cmds[i].K] = seq
