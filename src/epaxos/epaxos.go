@@ -503,19 +503,19 @@ func replicaIdFromBallot(ballot int32) int32 {
 ***********************************************************************/
 
 func (r *Replica) replyPrepare(replicaId int32, reply *epaxosproto.PrepareReply) {
-	r.SendMsg(replicaId, r.prepareReplyRPC, reply)
+	r.SendMsgSlaveCheck(replicaId, r.prepareReplyRPC, reply)
 }
 
 func (r *Replica) replyPreAccept(replicaId int32, reply *epaxosproto.PreAcceptReply) {
-	r.SendMsg(replicaId, r.preAcceptReplyRPC, reply)
+	r.SendMsgSlaveCheck(replicaId, r.preAcceptReplyRPC, reply)
 }
 
 func (r *Replica) replyAccept(replicaId int32, reply *epaxosproto.AcceptReply) {
-	r.SendMsg(replicaId, r.acceptReplyRPC, reply)
+	r.SendMsgSlaveCheck(replicaId, r.acceptReplyRPC, reply)
 }
 
 func (r *Replica) replyTryPreAccept(replicaId int32, reply *epaxosproto.TryPreAcceptReply) {
-	r.SendMsg(replicaId, r.tryPreAcceptReplyRPC, reply)
+	r.SendMsgSlaveCheck(replicaId, r.tryPreAcceptReplyRPC, reply)
 }
 
 func (r *Replica) bcastPrepare(replica int32, instance int32, ballot int32) {
@@ -540,7 +540,7 @@ func (r *Replica) bcastPrepare(replica int32, instance int32, ballot int32) {
 		if !r.Alive[q] {
 			continue
 		}
-		r.SendMsg(q, r.prepareRPC, args)
+		r.SendMsgSlaveCheck(q, r.prepareRPC, args)
 		sent++
 	}
 }
@@ -572,7 +572,7 @@ func (r *Replica) bcastPreAccept(replica int32, instance int32, ballot int32, cm
 		if !r.Alive[r.PreferredPeerOrder[q]] {
 			continue
 		}
-		r.SendMsg(r.PreferredPeerOrder[q], r.preAcceptRPC, args)
+		r.SendMsgSlaveCheck(r.PreferredPeerOrder[q], r.preAcceptRPC, args)
 		sent++
 		if sent >= n {
 			break
@@ -604,7 +604,7 @@ func (r *Replica) bcastTryPreAccept(replica int32, instance int32, ballot int32,
 		if !r.Alive[q] {
 			continue
 		}
-		r.SendMsg(q, r.tryPreAcceptRPC, args)
+		r.SendMsgSlaveCheck(q, r.tryPreAcceptRPC, args)
 	}
 }
 
@@ -636,7 +636,7 @@ func (r *Replica) bcastAccept(replica int32, instance int32, ballot int32, count
 		if !r.Alive[r.PreferredPeerOrder[q]] {
 			continue
 		}
-		r.SendMsg(r.PreferredPeerOrder[q], r.acceptRPC, args)
+		r.SendMsgSlaveCheck(r.PreferredPeerOrder[q], r.acceptRPC, args)
 		sent++
 		if sent >= n {
 			break
@@ -674,9 +674,9 @@ func (r *Replica) bcastCommit(replica int32, instance int32, cmds []state.Comman
 			continue
 		}
 		if r.Thrifty && sent >= r.N/2 {
-			r.SendMsg(r.PreferredPeerOrder[q], r.commitRPC, args)
+			r.SendMsgSlaveCheck(r.PreferredPeerOrder[q], r.commitRPC, args)
 		} else {
-			r.SendMsg(r.PreferredPeerOrder[q], r.commitShortRPC, argsShort)
+			r.SendMsgSlaveCheck(r.PreferredPeerOrder[q], r.commitShortRPC, argsShort)
 			sent++
 		}
 	}
@@ -994,7 +994,7 @@ func (r *Replica) handlePreAccept(preAccept *epaxosproto.PreAccept) {
 				r.CommittedUpTo})
 	} else {
 		pok := &epaxosproto.PreAcceptOK{preAccept.Instance}
-		r.SendMsg(preAccept.LeaderId, r.preAcceptOKRPC, pok)
+		r.SendMsgSlaveCheck(preAccept.LeaderId, r.preAcceptOKRPC, pok)
 	}
 
 	dlog.Printf("I've replied to the PreAccept\n")

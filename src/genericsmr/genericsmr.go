@@ -96,8 +96,8 @@ func NewReplica(id int, peerAddrList []string, masterAddr string, thrifty bool, 
 		exec,
 		dreply,
 		false,
-		false,
 		slave,
+		false,
 		nil,
 		make([]int32, len(peerAddrList)),
 		make(map[uint8]*RPCPair),
@@ -151,6 +151,8 @@ func (r *Replica) ConnectToMaster() {
 
 	r.MasterReader = bufio.NewReader(r.MasterConn)
 	r.MasterWriter = bufio.NewWriter(r.MasterConn)
+
+	log.Printf("Replica id: %d. Done connecting to master", r.Id)
 
 	go r.masterListener(r.MasterReader)
 }
@@ -387,6 +389,14 @@ func (r *Replica) SendMsgMaster(peerId int32, code uint8, msg fastrpc.Serializab
 	r.MasterWriter.WriteByte(code)
 	msg.Marshal(r.MasterWriter)
 	r.MasterWriter.Flush()
+}
+
+func (r *Replica) SendMsgSlaveCheck(peerId int32, code uint8, msg fastrpc.Serializable) {
+	if r.Slave {
+		r.SendMsgMaster(peerId, code, msg)
+	} else {
+		r.SendMsg(peerId, code, msg)
+	}
 }
 
 func (r *Replica) SendMsg(peerId int32, code uint8, msg fastrpc.Serializable) {

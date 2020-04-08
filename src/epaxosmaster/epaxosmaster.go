@@ -93,10 +93,9 @@ func main() {
 	if err != nil {
 		log.Fatal("Master listen error:", err)
 	}
-	master.listener = l
 
 	if *intercept {
-		master.waitForReplicaConnections()
+		go master.waitForReplicaConnections()
 	}
 
 	go master.run()
@@ -108,8 +107,9 @@ func (master *Master) waitForReplicaConnections() {
 	var b [4]byte
 	bs := b[:4]
 
+	listener, _ := net.Listen("tcp", fmt.Sprintf(":%d", *portnum-1))
 	for i := 0; i < *numNodes; i++ {
-		conn, err := master.listener.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
 			fmt.Println("Error accepting connection:", err)
 			continue
@@ -119,6 +119,9 @@ func (master *Master) waitForReplicaConnections() {
 			continue
 		}
 		id := int32(binary.LittleEndian.Uint32(bs))
+
+		log.Printf("Replica %d connected to master", id)
+
 		master.conn[id] = conn
 		master.readers[id] = bufio.NewReader(conn)
 		master.writers[id] = bufio.NewWriter(conn)
@@ -188,6 +191,7 @@ func (master *Master) run() {
 		addr := fmt.Sprintf("%s:%d", master.addrList[i], master.portList[i]+1000)
 		master.nodes[i], err = rpc.DialHTTP("tcp", addr)
 		if err != nil {
+			log.Println(err)
 			log.Fatalf("Error connecting to replica %d\n", i)
 		}
 		master.leader[i] = false

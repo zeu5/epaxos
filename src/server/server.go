@@ -53,24 +53,26 @@ func main() {
 
 	log.Printf("Server starting on port %d\n", *portnum)
 
-	masterAddrPort := fmt.Sprintf("%s:%d", *masterAddr, *masterPort)
-	replicaId, nodeList, slave := registerWithMaster(*masterAddrPort)
+	// Master listens on different port for Replica communication interception
+	masterAddrPort := fmt.Sprintf("%s:%d", *masterAddr, *masterPort-1)
+	replicaId, nodeList, slave := registerWithMaster(fmt.Sprintf("%s:%d", *masterAddr, *masterPort))
+	log.Println("Slave value :", slave)
 
 	if *doEpaxos {
 		log.Println("Starting Egalitarian Paxos replica...")
-		rep := epaxos.NewReplica(replicaId, nodeList, *masterAddrPort, *thrifty, *exec, *dreply, *beacon, *durable, slave)
+		rep := epaxos.NewReplica(replicaId, nodeList, masterAddrPort, *thrifty, *exec, *dreply, *beacon, *durable, slave)
 		rpc.Register(rep)
 	} else if *doMencius {
 		log.Println("Starting Mencius replica...")
-		rep := mencius.NewReplica(replicaId, nodeList, *masterAddrPort, *thrifty, *exec, *dreply, *durable, slave)
+		rep := mencius.NewReplica(replicaId, nodeList, masterAddrPort, *thrifty, *exec, *dreply, *durable, slave)
 		rpc.Register(rep)
 	} else if *doGpaxos {
 		log.Println("Starting Generalized Paxos replica...")
-		rep := gpaxos.NewReplica(replicaId, nodeList, *masterAddrPort, *thrifty, *exec, *dreply, slave)
+		rep := gpaxos.NewReplica(replicaId, nodeList, masterAddrPort, *thrifty, *exec, *dreply, slave)
 		rpc.Register(rep)
 	} else {
 		log.Println("Starting classic Paxos replica...")
-		rep := paxos.NewReplica(replicaId, nodeList, *masterAddrPort, *thrifty, *exec, *dreply, *durable, slave)
+		rep := paxos.NewReplica(replicaId, nodeList, masterAddrPort, *thrifty, *exec, *dreply, *durable, slave)
 		rpc.Register(rep)
 	}
 
