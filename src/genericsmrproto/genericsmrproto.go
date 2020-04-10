@@ -77,3 +77,9 @@ type BeTheLeaderArgs struct {
 
 type BeTheLeaderReply struct {
 }
+
+type ShutdownArgs struct {
+}
+
+type ShutdownReply struct {
+}

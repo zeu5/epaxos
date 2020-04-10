@@ -131,6 +131,11 @@ func (r *Replica) BeTheLeader(args *genericsmrproto.BeTheLeaderArgs, reply *gene
 
 /* ============= */
 
+func (r *Replica) ShutdownReplica(args *genericsmrproto.ShutDownArgs, reply *genericsmrproto.ShutdownReply) error {
+	r.Shutdown = true
+	return nil
+}
+
 func (r *Replica) ConnectToMaster() {
 
 	var b [4]byte
@@ -383,6 +388,8 @@ func (r *Replica) RegisterRPC(msgObj fastrpc.Serializable, notify chan fastrpc.S
 func (r *Replica) SendMsgMaster(peerId int32, code uint8, msg fastrpc.Serializable) {
 	var b [4]byte
 	bs := b[:4]
+
+	// log.Printf("Sending message to master of type %d to %d", code, peerId)
 
 	binary.LittleEndian.PutUint32(bs, uint32(peerId))
 	r.MasterWriter.Write(bs)

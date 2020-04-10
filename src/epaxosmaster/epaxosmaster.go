@@ -10,6 +10,7 @@ import (
 	"genericsmrproto"
 	"io"
 	"log"
+	"mastercontrol"
 	"masterproto"
 	"net"
 	"net/http"
@@ -28,26 +29,21 @@ var intercept *bool = flag.Bool("intercept", false, "To activate the master whic
 
 var msgTable map[uint8]fastrpc.Serializable
 
-type Message struct {
-	to      int32
-	msgType uint8
-	msg     fastrpc.Serializable
-}
-
 type Master struct {
-	N           int
-	nodeList    []string
-	addrList    []string
-	portList    []int
-	lock        *sync.Mutex
-	nodes       []*rpc.Client
-	leader      []bool
-	alive       []bool
-	conn        []net.Conn
-	readers     []*bufio.Reader
-	writers     []*bufio.Writer
-	messagePool chan *Message
-	listener    net.Listener
+	N            int
+	nodeList     []string
+	addrList     []string
+	portList     []int
+	lock         *sync.Mutex
+	nodes        []*rpc.Client
+	leader       []bool
+	alive        []bool
+	conn         []net.Conn
+	readers      []*bufio.Reader
+	writers      []*bufio.Writer
+	controller   mastercontrol.Controller
+	stopChan     chan int
+	dispatchChan chan *mastercontrol.Message
 }
 
 func init() {
@@ -84,8 +80,10 @@ func main() {
 		make([]net.Conn, *numNodes),
 		make([]*bufio.Reader, *numNodes),
 		make([]*bufio.Writer, *numNodes),
-		make(chan *Message, CHAN_BUFFER_SIZE),
-		nil}
+		nil,
+		nil,
+		nil,
+	}
 
 	rpc.Register(master)
 	rpc.HandleHTTP()
@@ -95,12 +93,34 @@ func main() {
 	}
 
 	if *intercept {
+		master.controller = mastercontrol.NewServerController(*numNodes)
+		master.stopChan = make(chan int, 1)
+		master.dispatchChan = make(chan *mastercontrol.Message, CHAN_BUFFER_SIZE)
+		params := map[string]string{"port": "8080", "address": ""}
+		master.controller.Init(params, master.stopChan, master.dispatchChan)
+
 		go master.waitForReplicaConnections()
+		go master.listenToStopReplica()
 	}
 
 	go master.run()
 
 	http.Serve(l, nil)
+}
+
+func (master *Master) listenToStopReplica() {
+	for msg := range master.stopChan {
+		if master.alive[msg] {
+			for done := false; !done; {
+				err := master.nodes[msg].Call("Replica.ShutdownReplica", new(genericsmrproto.ShutdownArgs), new(genericsmrproto.ShutdownReply))
+				if err == nil {
+					done = true
+					master.alive[msg] = false
+				}
+				time.Sleep(1e8)
+			}
+		}
+	}
 }
 
 func (master *Master) waitForReplicaConnections() {
@@ -150,21 +170,23 @@ func (master *Master) replicaListener(rid int, reader *bufio.Reader) {
 			break
 		}
 
+		// log.Printf("Recieved Message of type %d from %d to %d", msgType, rid, to)
+
 		if objType, present := msgTable[msgType]; present {
 			obj := objType.New()
 			if err = obj.Unmarshal(reader); err != nil {
 				break
 			}
-			master.messagePool <- &Message{to, msgType, obj}
+			_ = master.controller.NotifyMessage(&mastercontrol.Message{to, msgType, obj})
 		}
 	}
 }
 
 func (master *Master) dispatcher() {
-	for msg := range master.messagePool {
-		writer := master.writers[msg.to]
-		writer.WriteByte(msg.msgType)
-		msg.msg.Marshal(writer)
+	for msg := range master.dispatchChan {
+		writer := master.writers[msg.To]
+		writer.WriteByte(msg.MsgType)
+		msg.Msg.Marshal(writer)
 		writer.Flush()
 	}
 }
@@ -259,7 +281,7 @@ func (master *Master) Register(args *masterproto.RegisterArgs, reply *masterprot
 	}
 
 	if nlen == master.N {
-		reply.Ready = true
+		reply.Ready = master.controller.ShallStart(index)
 		reply.ReplicaId = index
 		reply.NodeList = master.nodeList
 		reply.Slave = *intercept

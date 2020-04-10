@@ -231,6 +231,86 @@ func (t *BeTheLeaderArgs) Unmarshal(wire io.Reader) error {
 	return nil
 }
 
+func (t *ShutdownArgs) BinarySize() (nbytes int, sizeKnown bool) {
+	return 0, true
+}
+
+type ShutdownArgsCache struct {
+	mu    sync.Mutex
+	cache []*ShutdownArgs
+}
+
+func NewShutdownArgsCache() *ShutdownArgsCache {
+	c := &ShutdownArgsCache{}
+	c.cache = make([]*ShutdownArgs, 0)
+	return c
+}
+
+func (p *ShutdownArgsCache) Get() *ShutdownArgs {
+	var t *ShutdownArgs
+	p.mu.Lock()
+	if len(p.cache) > 0 {
+		t = p.cache[len(p.cache)-1]
+		p.cache = p.cache[0:(len(p.cache) - 1)]
+	}
+	p.mu.Unlock()
+	if t == nil {
+		t = &ShutdownArgs{}
+	}
+	return t
+}
+func (p *ShutdownArgsCache) Put(t *ShutdownArgs) {
+	p.mu.Lock()
+	p.cache = append(p.cache, t)
+	p.mu.Unlock()
+}
+func (t *ShutdownArgs) Marshal(wire io.Writer) {
+}
+
+func (t *ShutdownArgs) Unmarshal(wire io.Reader) error {
+	return nil
+}
+
+func (t *ShutdownReply) BinarySize() (nbytes int, sizeKnown bool) {
+	return 0, true
+}
+
+type ShutdownReplyCache struct {
+	mu    sync.Mutex
+	cache []*ShutdownReply
+}
+
+func NewShutdownReplyCache() *ShutdownReplyCache {
+	c := &ShutdownReplyCache{}
+	c.cache = make([]*ShutdownReply, 0)
+	return c
+}
+
+func (p *ShutdownReplyCache) Get() *ShutdownReply {
+	var t *ShutdownReply
+	p.mu.Lock()
+	if len(p.cache) > 0 {
+		t = p.cache[len(p.cache)-1]
+		p.cache = p.cache[0:(len(p.cache) - 1)]
+	}
+	p.mu.Unlock()
+	if t == nil {
+		t = &ShutdownReply{}
+	}
+	return t
+}
+func (p *ShutdownReplyCache) Put(t *ShutdownReply) {
+	p.mu.Lock()
+	p.cache = append(p.cache, t)
+	p.mu.Unlock()
+}
+func (t *ShutdownReply) Marshal(wire io.Writer) {
+}
+
+func (t *ShutdownReply) Unmarshal(wire io.Reader) error {
+	return nil
+}
+
 func (t *ProposeAndRead) BinarySize() (nbytes int, sizeKnown bool) {
 	return 0, false
 }
