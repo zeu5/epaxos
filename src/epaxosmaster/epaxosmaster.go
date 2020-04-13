@@ -26,6 +26,7 @@ var numNodes *int = flag.Int("N", 3, "Number of replicas. Defaults to 3.")
 
 // Flag to get going
 var intercept *bool = flag.Bool("intercept", false, "To activate the master which intercepts all messages in the network")
+var controlConf *string = flag.String("conf", "", "Config file path for the controller")
 
 var msgTable map[uint8]fastrpc.Serializable
 
@@ -93,11 +94,10 @@ func main() {
 	}
 
 	if *intercept {
-		master.controller = mastercontrol.NewServerController(*numNodes)
+		master.controller = mastercontrol.NewPCTFileController(*numNodes, *controlConf)
 		master.stopChan = make(chan int, 1)
 		master.dispatchChan = make(chan *mastercontrol.Message, CHAN_BUFFER_SIZE)
-		params := map[string]string{"port": "8080", "address": ""}
-		master.controller.Init(params, master.stopChan, master.dispatchChan)
+		master.controller.Init(nil, master.stopChan, master.dispatchChan)
 
 		go master.waitForReplicaConnections()
 		go master.listenToStopReplica()
@@ -170,14 +170,14 @@ func (master *Master) replicaListener(rid int, reader *bufio.Reader) {
 			break
 		}
 
-		// log.Printf("Recieved Message of type %d from %d to %d", msgType, rid, to)
+		log.Printf("Recieved Message of type %d from %d to %d", msgType, rid, to)
 
 		if objType, present := msgTable[msgType]; present {
 			obj := objType.New()
 			if err = obj.Unmarshal(reader); err != nil {
 				break
 			}
-			_ = master.controller.NotifyMessage(&mastercontrol.Message{to, msgType, obj})
+			master.controller.NotifyMessage(&mastercontrol.Message{0, rid, int(to), msgType, obj})
 		}
 	}
 }
@@ -193,6 +193,7 @@ func (master *Master) dispatcher() {
 
 func (master *Master) run() {
 	if *intercept {
+		go master.controller.Run()
 		go master.dispatcher()
 	}
 

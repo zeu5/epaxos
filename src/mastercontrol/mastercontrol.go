@@ -3,7 +3,9 @@ package mastercontrol
 import "fastrpc"
 
 type Message struct {
-	To      int32
+	ID      int
+	From    int
+	To      int
 	MsgType uint8
 	Msg     fastrpc.Serializable
 }
@@ -18,7 +20,7 @@ type Controller interface {
 	ShallStart(int) bool
 
 	// To notify the controller new messages
-	NotifyMessage(*Message) error
+	NotifyMessage(*Message)
 
 	// To start the main loop of the controller
 	Run()
