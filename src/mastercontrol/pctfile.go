@@ -3,7 +3,7 @@ package mastercontrol
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -20,22 +20,26 @@ const (
 	CHAN_BUFFER_SIZE = 200000
 )
 
+var msgLegend map[uint8]string
+
 type PCTFile struct {
-	messagePool    map[int]*Message
+	messagePool    map[int64]*Message
 	enabled        []bool
 	active         []bool
 	stopChan       chan int
 	dispatchChan   chan *Message
 	numReplicas    int
 	replicaIds     []int
-	messageCounter int
+	messageCounter int64
 	lock           *sync.Mutex
 	params         map[string]string
-	ackChan        chan int
+	ackChan        chan int64
 	fileInterface  *FileInterface
 }
 
-func NewPCTFileController(numNodes int, configPath string) *PCTFile {
+func NewPCTFileController(numNodes int, configPath string, msgL map[uint8]string) *PCTFile {
+
+	msgLegend = msgL
 
 	configFile, err := ioutil.ReadFile(configPath)
 	if err != nil {
@@ -50,10 +54,10 @@ func NewPCTFileController(numNodes int, configPath string) *PCTFile {
 		log.Fatal("Could not read config from config file for controller.")
 	}
 
-	ackChan := make(chan int, CHAN_BUFFER_SIZE)
+	ackChan := make(chan int64, CHAN_BUFFER_SIZE)
 
 	return &PCTFile{
-		make(map[int]*Message),
+		make(map[int64]*Message),
 		make([]bool, numNodes),
 		make([]bool, numNodes),
 		nil,
@@ -104,7 +108,7 @@ func (pctFile *PCTFile) ackmonitor() {
 	for messageid := range pctFile.ackChan {
 		pctFile.lock.Lock()
 		if message, ok := pctFile.messagePool[messageid]; ok {
-			log.Printf("Acknowledging message with id %d", messageid)
+			// log.Printf("Acknowledging message with id %d", messageid)
 			pctFile.dispatchChan <- message
 			delete(pctFile.messagePool, messageid)
 		}
@@ -123,11 +127,11 @@ type FileInterface struct {
 	newDir      string
 	sendDir     string
 	ackDir      string
-	messageChan chan int
+	messageChan chan int64
 	stop        bool
 }
 
-func NewFileInterface(workingDir string, ackChan chan int) *FileInterface {
+func NewFileInterface(workingDir string, ackChan chan int64) *FileInterface {
 
 	newdir := filepath.Join(workingDir, "new")
 	senddir := filepath.Join(workingDir, "send")
@@ -149,7 +153,7 @@ func NewFileInterface(workingDir string, ackChan chan int) *FileInterface {
 
 func (f *FileInterface) Run() {
 	go f.monitoracks()
-	go f.tempdispatcher()
+	// go f.tempdispatcher()
 }
 
 func (f *FileInterface) tempdispatcher() {
@@ -178,11 +182,7 @@ func (f *FileInterface) monitoracks() {
 		if err == nil {
 			for _, file := range files {
 				if strings.HasPrefix(file.Name(), FILE_PREFIX) {
-					messageID, err := getMessageID(filepath.Join(f.ackDir, file.Name()))
-					if err == nil && messageID >= 0 {
-						log.Printf("Got acked file %s with message id %d", file.Name(), messageID)
-						f.messageChan <- messageID
-					}
+					go f.dispatchMessage(file.Name())
 				}
 			}
 		}
@@ -191,12 +191,15 @@ func (f *FileInterface) monitoracks() {
 	close(f.messageChan)
 }
 
-func getMessageID(filepath string) (int, error) {
-	var messageid int = -1
+func (f *FileInterface) dispatchMessage(filename string) {
 
-	file, err := os.Open(filepath)
+	path := filepath.Join(f.ackDir, filename)
+	execute := false
+	var messageid int64 = -1
+
+	file, err := os.Open(path)
 	if err != nil {
-		return -1, err
+		return
 	}
 	defer file.Close()
 
@@ -207,29 +210,38 @@ func getMessageID(filepath string) (int, error) {
 			break
 		}
 		if err != nil {
-			return -1, errors.New("Error reading from message file")
+			return
 		}
 		if strings.HasPrefix(line, "eventId=") {
 			t := strings.Split(strings.TrimSpace(line), "=")
-			messageid, err = strconv.Atoi(t[1])
+			messageid, err = strconv.ParseInt(t[1], 10, 64)
+		}
+		if strings.HasPrefix(line, "execute=") {
+			t := strings.Split(strings.TrimSpace(line), "=")
+			if t[1] == "true" {
+				execute = true
+			}
 		}
 	}
-	_ = os.Remove(filepath)
-	return messageid, err
+	_ = os.Remove(path)
+	if err == nil && messageid >= 0 && execute {
+		// log.Printf("Got acked file %s with message id %d", file.Name(), messageid)
+		f.messageChan <- messageid
+	}
 }
 
 func (f *FileInterface) WriteMessage(m *Message) {
 	from := strconv.Itoa(m.From)
 	to := strconv.Itoa(m.To)
-	id := strconv.Itoa(m.ID)
-	msgType := strconv.Itoa(int(m.MsgType))
+	id := strconv.FormatInt(m.ID, 10)
 
 	filename := FILE_PREFIX + from + "_" + to + "_" + id
 
 	content := "eventId=" + id + "\n"
 	content += "sender=" + from + "\n"
 	content += "recv=" + to + "\n"
-	content += "msgtype=" + msgType + "\n"
+	content += "msgtype=" + msgLegend[m.MsgType] + "\n"
+	content += "msg=" + fmt.Sprintf("%#v", m.Msg) + "\n"
 
 	go f.createAndCommitFile(filename, content)
 }
@@ -249,7 +261,7 @@ func (f *FileInterface) commitFile(filename string) error {
 }
 
 func (f *FileInterface) createFile(filename string, content string) error {
-	log.Printf("Creating file %s", filename)
+	// log.Printf("Creating file %s", filename)
 
 	file, err := os.Create(filepath.Join(f.newDir, filename))
 	if err != nil {

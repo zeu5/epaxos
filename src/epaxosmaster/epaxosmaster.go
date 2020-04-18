@@ -29,6 +29,7 @@ var intercept *bool = flag.Bool("intercept", false, "To activate the master whic
 var controlConf *string = flag.String("conf", "", "Config file path for the controller")
 
 var msgTable map[uint8]fastrpc.Serializable
+var msgType map[uint8]string
 
 type Master struct {
 	N            int
@@ -62,6 +63,19 @@ func init() {
 	msgTable[count+8] = new(epaxosproto.CommitShort)
 	msgTable[count+9] = new(epaxosproto.TryPreAccept)
 	msgTable[count+10] = new(epaxosproto.TryPreAcceptReply)
+
+	msgType = make(map[uint8]string)
+	msgType[count] = "Prepare"
+	msgType[count+1] = "PrepareReply"
+	msgType[count+2] = "PreAccept"
+	msgType[count+3] = "PreAcceptReply"
+	msgType[count+4] = "PreAcceptOK"
+	msgType[count+5] = "Accept"
+	msgType[count+6] = "AcceptReply"
+	msgType[count+7] = "Commit"
+	msgType[count+8] = "CommitShort"
+	msgType[count+9] = "TryPreAccept"
+	msgType[count+10] = "TryPreAcceptReply"
 }
 
 func main() {
@@ -94,7 +108,7 @@ func main() {
 	}
 
 	if *intercept {
-		master.controller = mastercontrol.NewPCTFileController(*numNodes, *controlConf)
+		master.controller = mastercontrol.NewPCTFileController(*numNodes, *controlConf, msgType)
 		master.stopChan = make(chan int, 1)
 		master.dispatchChan = make(chan *mastercontrol.Message, CHAN_BUFFER_SIZE)
 		master.controller.Init(nil, master.stopChan, master.dispatchChan)
@@ -170,7 +184,7 @@ func (master *Master) replicaListener(rid int, reader *bufio.Reader) {
 			break
 		}
 
-		log.Printf("Recieved Message of type %d from %d to %d", msgType, rid, to)
+		// log.Printf("Recieved Message of type %d from %d to %d", msgType, rid, to)
 
 		if objType, present := msgTable[msgType]; present {
 			obj := objType.New()
@@ -282,7 +296,11 @@ func (master *Master) Register(args *masterproto.RegisterArgs, reply *masterprot
 	}
 
 	if nlen == master.N {
-		reply.Ready = master.controller.ShallStart(index)
+		if *intercept {
+			reply.Ready = master.controller.ShallStart(index)
+		} else {
+			reply.Ready = true
+		}
 		reply.ReplicaId = index
 		reply.NodeList = master.nodeList
 		reply.Slave = *intercept

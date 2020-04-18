@@ -3,7 +3,7 @@ package mastercontrol
 import "fastrpc"
 
 type Message struct {
-	ID      int
+	ID      int64
 	From    int
 	To      int
 	MsgType uint8

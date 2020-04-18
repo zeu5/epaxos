@@ -127,6 +127,7 @@ func main() {
 	var id int32 = 0
 	done := make(chan bool, N)
 	args := genericsmrproto.Propose{id, state.Command{state.PUT, 0, 0}, 0}
+	sumtimes := time.Duration(0)
 
 	before_total := time.Now()
 
@@ -169,6 +170,7 @@ func main() {
 				writers[leader].WriteByte(genericsmrproto.PROPOSE)
 				args.Marshal(writers[leader])
 			} else {
+				fmt.Println("Sending to everyone")
 				//send to everyone
 				for rep := 0; rep < N; rep++ {
 					writers[rep].WriteByte(genericsmrproto.PROPOSE)
@@ -200,6 +202,7 @@ func main() {
 
 		after := time.Now()
 
+		sumtimes += after.Sub(before)
 		fmt.Printf("Round took %v\n", after.Sub(before))
 
 		if *check {
@@ -223,6 +226,7 @@ func main() {
 	}
 
 	after_total := time.Now()
+	fmt.Printf("Average round time %v\n", time.Duration(int64(sumtimes)/int64(*rounds)))
 	fmt.Printf("Test took %v\n", after_total.Sub(before_total))
 
 	s := 0
