@@ -17,6 +17,8 @@ import (
 	"net/rpc"
 	"sync"
 	"time"
+
+	"github.com/epaxos/src/gpaxosproto"
 )
 
 const CHAN_BUFFER_SIZE = 200000
@@ -46,6 +48,28 @@ type Master struct {
 	controller   mastercontrol.Controller
 	stopChan     chan int
 	dispatchChan chan *mastercontrol.Message
+}
+
+func init() {
+	msgTable = make(map[uint8]fastrpc.Serializable)
+	count := genericsmrproto.GENERIC_SMR_BEACON_REPLY + 1
+
+	msgTable[count] = new(gpaxosproto.Prepare)
+	msgTable[count+1] = new(gpaxosproto.PrepareReply)
+	msgTable[count+2] = new(gpaxosproto.M_1a)
+	msgTable[count+3] = new(gpaxosproto.M_1b)
+	msgTable[count+4] = new(gpaxosproto.M_2a)
+	msgTable[count+5] = new(gpaxosproto.M_2b)
+	msgTable[count+6] = new(gpaxosproto.Commit)
+
+	msgType = make(map[uint8]string)
+	msgType[count] = "Prepare"
+	msgType[count+1] = "PrepareReply"
+	msgType[count+2] = "M_1a"
+	msgType[count+3] = "M_1b"
+	msgType[count+4] = "M_2a"
+	msgType[count+5] = "M_2b"
+	msgType[count+6] = "Commit"
 }
 
 func main() {

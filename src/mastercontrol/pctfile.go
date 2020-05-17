@@ -2,6 +2,7 @@ package mastercontrol
 
 import (
 	"bufio"
+	"dlog"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -225,7 +226,7 @@ func (f *FileInterface) dispatchMessage(filename string) {
 	}
 	_ = os.Remove(path)
 	if err == nil && messageid >= 0 && execute {
-		// log.Printf("Got acked file %s with message id %d", file.Name(), messageid)
+		log.Printf("Got acked file %s with message id %d", file.Name(), messageid)
 		f.messageChan <- messageid
 	}
 }
@@ -240,6 +241,7 @@ func (f *FileInterface) WriteMessage(m *Message) {
 	content := "eventId=" + id + "\n"
 	content += "sender=" + from + "\n"
 	content += "recv=" + to + "\n"
+	content += "msgtypecode=" + strconv.Itoa(int(m.MsgType)) + "\n"
 	content += "msgtype=" + msgLegend[m.MsgType] + "\n"
 	content += "msg=" + fmt.Sprintf("%#v", m.Msg) + "\n"
 
@@ -261,7 +263,7 @@ func (f *FileInterface) commitFile(filename string) error {
 }
 
 func (f *FileInterface) createFile(filename string, content string) error {
-	// log.Printf("Creating file %s", filename)
+	dlog.Printf("Creating file %s with content %s\n", filename, content)
 
 	file, err := os.Create(filepath.Join(f.newDir, filename))
 	if err != nil {

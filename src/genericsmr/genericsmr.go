@@ -2,6 +2,7 @@ package genericsmr
 
 import (
 	"bufio"
+	"dlog"
 	"encoding/binary"
 	"fastrpc"
 	"fmt"
@@ -134,6 +135,30 @@ func (r *Replica) BeTheLeader(args *genericsmrproto.BeTheLeaderArgs, reply *gene
 func (r *Replica) ShutdownReplica(args *genericsmrproto.ShutdownArgs, reply *genericsmrproto.ShutdownReply) error {
 	r.Shutdown = true
 	return nil
+}
+
+func (r *Replica) ConnectToMasterNoListener() {
+
+	var b [4]byte
+	bs := b[:4]
+
+	for done := false; !done; {
+		if conn, err := net.Dial("tcp", r.masterAddr); err == nil {
+			r.MasterConn = conn
+			done = true
+		} else {
+			time.Sleep(1e9)
+		}
+	}
+	binary.LittleEndian.PutUint32(bs, uint32(r.Id))
+	if _, err := r.MasterConn.Write(bs); err != nil {
+		fmt.Println("Write id error:", err)
+	}
+
+	r.MasterReader = bufio.NewReader(r.MasterConn)
+	r.MasterWriter = bufio.NewWriter(r.MasterConn)
+
+	log.Printf("Replica id: %d. Done connecting to master", r.Id)
 }
 
 func (r *Replica) ConnectToMaster() {
@@ -390,7 +415,7 @@ func (r *Replica) SendMsgMaster(peerId int32, code uint8, msg fastrpc.Serializab
 	var b [4]byte
 	bs := b[:4]
 
-	// log.Printf("Sending message to master of type %d to %d", code, peerId)
+	dlog.Printf("Sending message to master of type %d to %d", code, peerId)
 
 	binary.LittleEndian.PutUint32(bs, uint32(peerId))
 	r.MasterWriter.Write(bs)

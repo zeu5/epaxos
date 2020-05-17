@@ -26,7 +26,7 @@ func main() {
 
 	runtime.GOMAXPROCS(2)
 
-	randObj := rand.New(rand.NewSource(41))
+	randObj := rand.New(rand.NewSource(4123))
 
 	master, err := rpc.DialHTTP("tcp", fmt.Sprintf("%s:%d", *masterAddr, *masterPort))
 	if err != nil {

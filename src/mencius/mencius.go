@@ -161,11 +161,11 @@ func (r *Replica) sync() {
 }
 
 func (r *Replica) replyPrepare(replicaId int32, reply *menciusproto.PrepareReply) {
-	r.SendMsg(replicaId, r.prepareReplyRPC, reply)
+	r.SendMsgSlaveCheck(replicaId, r.prepareReplyRPC, reply)
 }
 
 func (r *Replica) replyAccept(replicaId int32, reply *menciusproto.AcceptReply) {
-	r.SendMsg(replicaId, r.acceptReplyRPC, reply)
+	r.SendMsgSlaveCheck(replicaId, r.acceptReplyRPC, reply)
 }
 
 /* ============= */
@@ -174,6 +174,11 @@ func (r *Replica) replyAccept(replicaId int32, reply *menciusproto.AcceptReply) 
 var lastSeenInstance int32
 
 func (r *Replica) run() {
+
+	if r.Slave {
+		r.ConnectToMaster()
+	}
+
 	r.ConnectToPeers()
 
 	dlog.Println("Waiting for client connections")
@@ -299,7 +304,7 @@ func (r *Replica) bcastSkip(startInstance int32, endInstance int32, exceptReplic
 			continue
 		}
 		sent++
-		r.SendMsgNoFlush(q, r.skipRPC, args)
+		r.SendMsgSlaveCheck(q, r.skipRPC, args)
 	}
 }
 
@@ -326,7 +331,7 @@ func (r *Replica) bcastPrepare(instance int32, ballot int32) {
 			continue
 		}
 		sent++
-		r.SendMsg(q, r.prepareRPC, args)
+		r.SendMsgSlaveCheck(q, r.prepareRPC, args)
 	}
 }
 
@@ -369,7 +374,7 @@ func (r *Replica) bcastAccept(instance int32, ballot int32, skip uint8, nbInstTo
 			}
 		}
 		sent++
-		r.SendMsg(q, r.acceptRPC, args)
+		r.SendMsgSlaveCheck(q, r.acceptRPC, args)
 	}
 
 	for sent < r.N>>1 {
@@ -390,7 +395,7 @@ func (r *Replica) bcastAccept(instance int32, ballot int32, skip uint8, nbInstTo
 			}
 		}
 		sent++
-		r.SendMsg(q, r.acceptRPC, args)
+		r.SendMsgSlaveCheck(q, r.acceptRPC, args)
 	}
 }
 
@@ -422,7 +427,7 @@ func (r *Replica) bcastCommit(instance int32, skip uint8, nbInstToSkip int32, co
 			continue
 		}
 		sent++
-		r.SendMsg(q, r.commitRPC, args)
+		r.SendMsgSlaveCheck(q, r.commitRPC, args)
 	}
 }
 
@@ -501,7 +506,7 @@ func (r *Replica) timerHelper(ds *DelayedSkip) {
 }
 
 func (r *Replica) handleAccept(accept *menciusproto.Accept) {
-	flush := true
+	// flush := true
 	inst := r.instanceSpace[accept.Instance]
 
 	if inst != nil && inst.ballot > accept.Ballot {
@@ -519,10 +524,10 @@ func (r *Replica) handleAccept(accept *menciusproto.Accept) {
 		}
 		if r.skipsWaiting < MAX_SKIPS_WAITING {
 			//start a timer, waiting for a propose to arrive and fill this hole
-			go r.timerHelper(&DelayedSkip{skipEnd})
+			// go r.timerHelper(&DelayedSkip{skipEnd})
 			//r.delayedSkipChan <- &DelayedSkip{accept, skipStart}
 			r.skipsWaiting++
-			flush = false
+			// flush = false
 		}
 		r.instanceSpace[r.crtInstance] = &Instance{true,
 			int(skipEnd-r.crtInstance)/r.N + 1,
@@ -577,13 +582,13 @@ func (r *Replica) handleAccept(accept *menciusproto.Accept) {
 		dlog.Printf("Skipping!!\n")
 		r.bcastSkip(skipStart, skipEnd, accept.LeaderId)
 		r.updateBlocking(skipStart)
-		if flush {
-			for _, w := range r.PeerWriters {
-				if w != nil {
-					w.Flush()
-				}
-			}
-		}
+		// if flush {
+		// 	for _, w := range r.PeerWriters {
+		// 		if w != nil {
+		// 			w.Flush()
+		// 		}
+		// 	}
+		// }
 	} else {
 		r.updateBlocking(accept.Instance)
 	}

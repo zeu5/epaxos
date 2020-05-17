@@ -24,7 +24,7 @@ const ADAPT_TIME_SEC = 10
 
 const MAX_BATCH = 1000
 
-const COMMIT_GRACE_PERIOD = 10 * 1e9 //10 seconds
+const COMMIT_GRACE_PERIOD = 2 * 1e9 //Changing it to 2 microseconds for testing - actual 10 seconds
 
 const BF_K = 4
 const BF_M_N = 32.0
@@ -37,6 +37,44 @@ const CHECKPOINT_PERIOD = 10000
 
 var cpMarker []state.Command
 var cpcounter = 0
+
+type CommitGraceTimeoutS struct {
+	lock    *sync.Mutex
+	timeout uint64
+	flag    bool
+}
+
+func NewCommitGraceTimeout(const_timeout uint64) *CommitGraceTimeoutS {
+	return &CommitGraceTimeoutS{
+		new(sync.Mutex),
+		const_timeout,
+		false,
+	}
+}
+
+func (c *CommitGraceTimeoutS) Check(timeout uint64) bool {
+	dlog.Printf("Checking timeout %d\n", timeout)
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	return c.flag || timeout >= c.timeout
+}
+
+func (c *CommitGraceTimeoutS) EnableFlag() {
+	dlog.Println("Enabled timeout flag")
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.flag = true
+}
+
+func (c *CommitGraceTimeoutS) DisableFlag() {
+	dlog.Println("Disabled timeout flag")
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.flag = false
+}
+
+var CommitGraceTimeout = NewCommitGraceTimeout(COMMIT_GRACE_PERIOD)
 
 type Replica struct {
 	*genericsmr.Replica
@@ -51,6 +89,7 @@ type Replica struct {
 	acceptReplyChan       chan fastrpc.Serializable
 	tryPreAcceptChan      chan fastrpc.Serializable
 	tryPreAcceptReplyChan chan fastrpc.Serializable
+	timeoutMessageChan    chan fastrpc.Serializable
 	prepareRPC            uint8
 	prepareReplyRPC       uint8
 	preAcceptRPC          uint8
@@ -62,6 +101,7 @@ type Replica struct {
 	commitShortRPC        uint8
 	tryPreAcceptRPC       uint8
 	tryPreAcceptReplyRPC  uint8
+	timeoutMessageRPC     uint8
 	InstanceSpace         [][]*Instance // the space of all instances (used and not yet used)
 	crtInstance           []int32       // highest active instance numbers that this replica knows about
 	CommittedUpTo         [DS]int32     // highest committed instance per replica that this replica knows about
@@ -132,7 +172,8 @@ func NewReplica(id int, peerAddrList []string, masterAddrPort string, thrifty bo
 		make(chan fastrpc.Serializable, genericsmr.CHAN_BUFFER_SIZE*2),
 		make(chan fastrpc.Serializable, genericsmr.CHAN_BUFFER_SIZE),
 		make(chan fastrpc.Serializable, genericsmr.CHAN_BUFFER_SIZE),
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		make(chan fastrpc.Serializable, genericsmr.CHAN_BUFFER_SIZE),
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		make([][]*Instance, len(peerAddrList)),
 		make([]int32, len(peerAddrList)),
 		[DS]int32{-1, -1, -1, -1, -1},
@@ -176,6 +217,7 @@ func NewReplica(id int, peerAddrList []string, masterAddrPort string, thrifty bo
 	r.commitShortRPC = r.RegisterRPC(new(epaxosproto.CommitShort), r.commitShortChan)
 	r.tryPreAcceptRPC = r.RegisterRPC(new(epaxosproto.TryPreAccept), r.tryPreAcceptChan)
 	r.tryPreAcceptReplyRPC = r.RegisterRPC(new(epaxosproto.TryPreAcceptReply), r.tryPreAcceptReplyChan)
+	r.timeoutMessageRPC = r.RegisterRPC(new(epaxosproto.TimeoutMessage), r.timeoutMessageChan)
 
 	go r.run()
 
@@ -261,6 +303,14 @@ func (r *Replica) stopAdapting() {
 	log.Println(r.PreferredPeerOrder)
 }
 
+// Just a one time thing. Used for PCT testing.
+func (r *Replica) sendTimeoutMessage() {
+	if r.Slave {
+		args := &epaxosproto.TimeoutMessage{}
+		r.SendMsgMaster(r.Id, r.timeoutMessageRPC, args)
+	}
+}
+
 var conflicted, weird, slow, happy int
 
 /* ============= */
@@ -281,6 +331,11 @@ func (r *Replica) run() {
 
 	if r.Exec {
 		go r.executeCommands()
+	}
+
+	// Sending message after connecting to master and clients
+	if r.Slave {
+		r.sendTimeoutMessage()
 	}
 
 	if r.Id == 0 {
@@ -405,6 +460,11 @@ func (r *Replica) run() {
 			r.ReplyBeacon(beacon)
 			break
 
+		case _ = <-r.timeoutMessageChan:
+			dlog.Println("Recived timeout message from self")
+			CommitGraceTimeout.EnableFlag()
+			break
+
 		case <-slowClockChan:
 			if r.Beacon {
 				for q := int32(0); q < int32(r.N); q++ {
@@ -452,9 +512,11 @@ func (r *Replica) executeCommands() {
 				if r.InstanceSpace[q][inst] == nil || r.InstanceSpace[q][inst].Status != epaxosproto.COMMITTED {
 					if inst == problemInstance[q] {
 						timeout[q] += SLEEP_TIME_NS
-						if timeout[q] >= COMMIT_GRACE_PERIOD {
+						if CommitGraceTimeout.Check(timeout[q]) {
+							dlog.Printf("Adding instance : (%d, %d) for recovery", int32(q), inst)
 							r.instancesToRecover <- &instanceId{int32(q), inst}
 							timeout[q] = 0
+							CommitGraceTimeout.DisableFlag()
 						}
 					} else {
 						problemInstance[q] = inst
@@ -1080,6 +1142,7 @@ func (r *Replica) handlePreAcceptReply(pareply *epaxosproto.PreAcceptReply) {
 		inst.Status = epaxosproto.ACCEPTED
 		r.bcastAccept(pareply.Replica, pareply.Instance, inst.ballot, int32(len(inst.Cmds)), inst.Seq, inst.Deps)
 	}
+	dlog.Printf("Handled PreAccept Reply\n")
 	//TODO: take the slow path if messages are slow to arrive
 }
 
@@ -1141,6 +1204,7 @@ func (r *Replica) handlePreAcceptOK(pareply *epaxosproto.PreAcceptOK) {
 		inst.Status = epaxosproto.ACCEPTED
 		r.bcastAccept(r.Id, pareply.Instance, inst.ballot, int32(len(inst.Cmds)), inst.Seq, inst.Deps)
 	}
+	dlog.Printf("Handled PreAcceptOK\n")
 	//TODO: take the slow path if messages are slow to arrive
 }
 
@@ -1202,6 +1266,7 @@ func (r *Replica) handleAccept(accept *epaxosproto.Accept) {
 			accept.Instance,
 			TRUE,
 			accept.Ballot})
+	dlog.Printf("Handled Accept\n")
 }
 
 func (r *Replica) handleAcceptReply(areply *epaxosproto.AcceptReply) {
@@ -1251,6 +1316,7 @@ func (r *Replica) handleAcceptReply(areply *epaxosproto.AcceptReply) {
 
 		r.bcastCommit(areply.Replica, areply.Instance, inst.Cmds, inst.Seq, inst.Deps)
 	}
+	dlog.Printf("Handled AcceptReply\n")
 }
 
 /**********************************************************************
@@ -1309,6 +1375,8 @@ func (r *Replica) handleCommit(commit *epaxosproto.Commit) {
 
 	r.recordInstanceMetadata(r.InstanceSpace[commit.Replica][commit.Instance])
 	r.recordCommands(commit.Command)
+
+	dlog.Printf("Handled Commit\n")
 }
 
 func (r *Replica) handleCommitShort(commit *epaxosproto.CommitShort) {
@@ -1351,6 +1419,8 @@ func (r *Replica) handleCommitShort(commit *epaxosproto.CommitShort) {
 	r.updateCommitted(commit.Replica)
 
 	r.recordInstanceMetadata(r.InstanceSpace[commit.Replica][commit.Instance])
+
+	dlog.Printf("Handled CommitShort\n")
 }
 
 /**********************************************************************
@@ -1360,6 +1430,7 @@ func (r *Replica) handleCommitShort(commit *epaxosproto.CommitShort) {
 ***********************************************************************/
 
 func (r *Replica) startRecoveryForInstance(replica int32, instance int32) {
+	dlog.Printf("Starting recovery for instance : (%d, %d)", replica, instance)
 	var nildeps [DS]int32
 
 	if r.InstanceSpace[replica][instance] == nil {
@@ -1430,6 +1501,8 @@ func (r *Replica) handlePrepare(prepare *epaxosproto.Prepare) {
 	}
 
 	r.replyPrepare(prepare.LeaderId, preply)
+
+	dlog.Printf("Handled Prepare\n")
 }
 
 func (r *Replica) handlePrepareReply(preply *epaxosproto.PrepareReply) {
@@ -1557,6 +1630,8 @@ func (r *Replica) handlePrepareReply(preply *epaxosproto.PrepareReply) {
 			inst.lb, 0, 0, nil}
 		r.bcastAccept(preply.Replica, preply.Instance, inst.ballot, 0, 0, noop_deps)
 	}
+
+	dlog.Printf("Handled PrepareReply\n")
 }
 
 func (r *Replica) handleTryPreAccept(tpa *epaxosproto.TryPreAccept) {
@@ -1607,6 +1682,8 @@ func (r *Replica) handleTryPreAccept(tpa *epaxosproto.TryPreAccept) {
 		}
 		r.replyTryPreAccept(tpa.LeaderId, &epaxosproto.TryPreAcceptReply{r.Id, tpa.Replica, tpa.Instance, TRUE, inst.ballot, 0, 0, 0})
 	}
+
+	dlog.Printf("Handled TryPreAccept\n")
 }
 
 func (r *Replica) findPreAcceptConflicts(cmds []state.Command, replica int32, instance int32, seq int32, deps [DS]int32) (bool, int32, int32) {
@@ -1717,6 +1794,8 @@ func (r *Replica) handleTryPreAcceptReply(tpar *epaxosproto.TryPreAcceptReply) {
 			inst.lb.tryingToPreAccept = false
 		}
 	}
+
+	dlog.Printf("Handled TryPreAcceptReply\n")
 }
 
 //helper functions and structures to prevent defer cycles while recovering

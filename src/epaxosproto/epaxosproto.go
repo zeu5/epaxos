@@ -4,6 +4,8 @@ import (
 	"state"
 )
 
+type TimeoutMessage struct{}
+
 type Prepare struct {
 	LeaderId int32
 	Replica  int32

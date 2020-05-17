@@ -1,6 +1,7 @@
 package main
 
 import (
+	"dlog"
 	"epaxos"
 	"flag"
 	"fmt"
@@ -110,6 +111,6 @@ func catchKill(interrupt chan os.Signal) {
 	if *cpuprofile != "" {
 		pprof.StopCPUProfile()
 	}
-	fmt.Println("Caught signal")
+	dlog.Println("Caught signal")
 	os.Exit(0)
 }

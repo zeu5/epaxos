@@ -14,6 +14,17 @@ type byteReader interface {
 	ReadByte() (c byte, err error)
 }
 
+func (t *TimeoutMessage) New() fastrpc.Serializable {
+	return new(TimeoutMessage)
+}
+
+func (t *TimeoutMessage) Marshal(wire io.Writer) {
+}
+
+func (t *TimeoutMessage) Unmarshal(r io.Reader) error {
+	return nil
+}
+
 func (t *TryPreAccept) BinarySize() (nbytes int, sizeKnown bool) {
 	return 0, false
 }

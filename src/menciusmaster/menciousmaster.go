@@ -12,6 +12,7 @@ import (
 	"log"
 	"mastercontrol"
 	"masterproto"
+	"menciusproto"
 	"net"
 	"net/http"
 	"net/rpc"
@@ -48,6 +49,26 @@ type Master struct {
 	dispatchChan chan *mastercontrol.Message
 }
 
+func init() {
+	msgTable = make(map[uint8]fastrpc.Serializable)
+	count := genericsmrproto.GENERIC_SMR_BEACON_REPLY + 1
+
+	msgTable[count] = new(menciusproto.Skip)
+	msgTable[count+1] = new(menciusproto.Prepare)
+	msgTable[count+2] = new(menciusproto.Accept)
+	msgTable[count+3] = new(menciusproto.Commit)
+	msgTable[count+4] = new(menciusproto.PrepareReply)
+	msgTable[count+5] = new(menciusproto.AcceptReply)
+
+	msgType = make(map[uint8]string)
+	msgType[count] = "Skip"
+	msgType[count+1] = "Prepare"
+	msgType[count+2] = "Accept"
+	msgType[count+3] = "Commit"
+	msgType[count+4] = "PrepareReply"
+	msgType[count+5] = "AcceptReply"
+}
+
 func main() {
 	flag.Parse()
 
@@ -78,7 +99,7 @@ func main() {
 	}
 
 	if *intercept {
-		master.controller = mastercontrol.NewPCTFileController(*numNodes, *controlConf, msgType)
+		master.controller = mastercontrol.NewDummyController(*numNodes, *controlConf, msgType)
 		master.stopChan = make(chan int, 1)
 		master.dispatchChan = make(chan *mastercontrol.Message, CHAN_BUFFER_SIZE)
 		master.controller.Init(nil, master.stopChan, master.dispatchChan)

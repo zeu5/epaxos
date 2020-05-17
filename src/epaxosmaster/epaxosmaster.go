@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"dlog"
 	"encoding/binary"
 	"epaxosproto"
 	"fastrpc"
@@ -63,6 +64,7 @@ func init() {
 	msgTable[count+8] = new(epaxosproto.CommitShort)
 	msgTable[count+9] = new(epaxosproto.TryPreAccept)
 	msgTable[count+10] = new(epaxosproto.TryPreAcceptReply)
+	msgTable[count+11] = new(epaxosproto.TimeoutMessage)
 
 	msgType = make(map[uint8]string)
 	msgType[count] = "Prepare"
@@ -76,6 +78,7 @@ func init() {
 	msgType[count+8] = "CommitShort"
 	msgType[count+9] = "TryPreAccept"
 	msgType[count+10] = "TryPreAcceptReply"
+	msgType[count+11] = "TimeoutMessage"
 }
 
 func main() {
@@ -184,7 +187,7 @@ func (master *Master) replicaListener(rid int, reader *bufio.Reader) {
 			break
 		}
 
-		// log.Printf("Recieved Message of type %d from %d to %d", msgType, rid, to)
+		dlog.Printf("Recieved Message of type %d from %d to %d", msgType, rid, to)
 
 		if objType, present := msgTable[msgType]; present {
 			obj := objType.New()

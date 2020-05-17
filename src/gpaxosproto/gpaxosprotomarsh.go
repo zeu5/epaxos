@@ -3,6 +3,7 @@ package gpaxosproto
 import (
 	"bufio"
 	"encoding/binary"
+	"fastrpc"
 	"io"
 	"sync"
 )
@@ -45,6 +46,11 @@ func (p *M_1aCache) Put(t *M_1a) {
 	p.cache = append(p.cache, t)
 	p.mu.Unlock()
 }
+
+func (t *M_1a) New() fastrpc.Serializable {
+	return new(M_1a)
+}
+
 func (t *M_1a) Marshal(wire io.Writer) {
 	var b [9]byte
 	var bs []byte
@@ -109,6 +115,11 @@ func (p *M_1bCache) Put(t *M_1b) {
 	p.cache = append(p.cache, t)
 	p.mu.Unlock()
 }
+
+func (t *M_1b) New() fastrpc.Serializable {
+	return new(M_1b)
+}
+
 func (t *M_1b) Marshal(wire io.Writer) {
 	var b [10]byte
 	var bs []byte
@@ -202,6 +213,11 @@ func (p *PrepareCache) Put(t *Prepare) {
 	p.cache = append(p.cache, t)
 	p.mu.Unlock()
 }
+
+func (t *Prepare) New() fastrpc.Serializable {
+	return new(Prepare)
+}
+
 func (t *Prepare) Marshal(wire io.Writer) {
 	var b [12]byte
 	var bs []byte
@@ -270,6 +286,11 @@ func (p *M_2aCache) Put(t *M_2a) {
 	p.cache = append(p.cache, t)
 	p.mu.Unlock()
 }
+
+func (t *M_2a) New() fastrpc.Serializable {
+	return new(M_2a)
+}
+
 func (t *M_2a) Marshal(wire io.Writer) {
 	var b [10]byte
 	var bs []byte
@@ -363,6 +384,11 @@ func (p *M_2bCache) Put(t *M_2b) {
 	p.cache = append(p.cache, t)
 	p.mu.Unlock()
 }
+
+func (t *M_2b) New() fastrpc.Serializable {
+	return new(M_2b)
+}
+
 func (t *M_2b) Marshal(wire io.Writer) {
 	var b [10]byte
 	var bs []byte
@@ -481,6 +507,11 @@ func (p *CommitCache) Put(t *Commit) {
 	p.cache = append(p.cache, t)
 	p.mu.Unlock()
 }
+
+func (t *Commit) New() fastrpc.Serializable {
+	return new(Commit)
+}
+
 func (t *Commit) Marshal(wire io.Writer) {
 	var b [10]byte
 	var bs []byte
@@ -556,6 +587,11 @@ func (p *PrepareReplyCache) Put(t *PrepareReply) {
 	p.cache = append(p.cache, t)
 	p.mu.Unlock()
 }
+
+func (p *PrepareReply) New() fastrpc.Serializable {
+	return new(PrepareReply)
+}
+
 func (t *PrepareReply) Marshal(wire io.Writer) {
 	var b [10]byte
 	var bs []byte
