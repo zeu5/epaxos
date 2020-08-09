@@ -99,7 +99,7 @@ func main() {
 	}
 
 	if *intercept {
-		master.controller = mastercontrol.NewDummyController(*numNodes, *controlConf, msgType)
+		master.controller = mastercontrol.NewPCTFileController(*numNodes, *controlConf, msgType)
 		master.stopChan = make(chan int, 1)
 		master.dispatchChan = make(chan *mastercontrol.Message, CHAN_BUFFER_SIZE)
 		master.controller.Init(nil, master.stopChan, master.dispatchChan)

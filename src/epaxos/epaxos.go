@@ -24,7 +24,7 @@ const ADAPT_TIME_SEC = 10
 
 const MAX_BATCH = 1000
 
-const COMMIT_GRACE_PERIOD = 2 * 1e9 //Changing it to 2 microseconds for testing - actual 10 seconds
+const COMMIT_GRACE_PERIOD = 10 * 1e9 //Changing it to 2 microseconds for testing - actual 10 seconds
 
 const BF_K = 4
 const BF_M_N = 32.0
@@ -53,11 +53,10 @@ func NewCommitGraceTimeout(const_timeout uint64) *CommitGraceTimeoutS {
 }
 
 func (c *CommitGraceTimeoutS) Check(timeout uint64) bool {
-	dlog.Printf("Checking timeout %d\n", timeout)
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	return c.flag || timeout >= c.timeout
+	return c.flag || c.timeout <= timeout
 }
 
 func (c *CommitGraceTimeoutS) EnableFlag() {
@@ -1112,7 +1111,7 @@ func (r *Replica) handlePreAcceptReply(pareply *epaxosproto.PreAcceptReply) {
 	}
 
 	//can we commit on the fast path?
-	if inst.lb.preAcceptOKs >= r.N/2 && inst.lb.allEqual && allCommitted && isInitialBallot(inst.ballot) {
+	if inst.lb.preAcceptOKs >= r.N/3 && inst.lb.allEqual && allCommitted && isInitialBallot(inst.ballot) {
 		happy++
 		dlog.Printf("Fast path for instance %d.%d\n", pareply.Replica, pareply.Instance)
 		r.InstanceSpace[pareply.Replica][pareply.Instance].Status = epaxosproto.COMMITTED
@@ -1134,7 +1133,7 @@ func (r *Replica) handlePreAcceptReply(pareply *epaxosproto.PreAcceptReply) {
 		r.sync() //is this necessary here?
 
 		r.bcastCommit(pareply.Replica, pareply.Instance, inst.Cmds, inst.Seq, inst.Deps)
-	} else if inst.lb.preAcceptOKs >= r.N/2 {
+	} else if inst.lb.preAcceptOKs >= r.N/3 {
 		if !allCommitted {
 			weird++
 		}
@@ -1175,7 +1174,7 @@ func (r *Replica) handlePreAcceptOK(pareply *epaxosproto.PreAcceptOK) {
 	}
 
 	//can we commit on the fast path?
-	if inst.lb.preAcceptOKs >= r.N/2 && inst.lb.allEqual && allCommitted && isInitialBallot(inst.ballot) {
+	if inst.lb.preAcceptOKs >= r.N/3 && inst.lb.allEqual && allCommitted && isInitialBallot(inst.ballot) {
 		happy++
 		r.InstanceSpace[r.Id][pareply.Instance].Status = epaxosproto.COMMITTED
 		r.updateCommitted(r.Id)
@@ -1196,7 +1195,7 @@ func (r *Replica) handlePreAcceptOK(pareply *epaxosproto.PreAcceptOK) {
 		r.sync() //is this necessary here?
 
 		r.bcastCommit(r.Id, pareply.Instance, inst.Cmds, inst.Seq, inst.Deps)
-	} else if inst.lb.preAcceptOKs >= r.N/2 {
+	} else if inst.lb.preAcceptOKs >= r.N/3 {
 		if !allCommitted {
 			weird++
 		}
@@ -1295,7 +1294,7 @@ func (r *Replica) handleAcceptReply(areply *epaxosproto.AcceptReply) {
 
 	inst.lb.acceptOKs++
 
-	if inst.lb.acceptOKs+1 > r.N/2 {
+	if inst.lb.acceptOKs+1 > r.N/3 {
 		r.InstanceSpace[areply.Replica][areply.Instance].Status = epaxosproto.COMMITTED
 		r.updateCommitted(areply.Replica)
 		if inst.lb.clientProposals != nil && !r.Dreply {
@@ -1741,7 +1740,7 @@ func (r *Replica) handleTryPreAcceptReply(tpar *epaxosproto.TryPreAcceptReply) {
 	if tpar.OK == TRUE {
 		inst.lb.preAcceptOKs++
 		inst.lb.tpaOKs++
-		if inst.lb.preAcceptOKs >= r.N/2 {
+		if inst.lb.preAcceptOKs >= r.N/3 {
 			//it's safe to start Accept phase
 			inst.Cmds = ir.cmds
 			inst.Seq = ir.seq
@@ -1777,7 +1776,7 @@ func (r *Replica) handleTryPreAcceptReply(tpar *epaxosproto.TryPreAcceptReply) {
 			inst.lb.tryingToPreAccept = false
 			r.startPhase1(tpar.Replica, tpar.Instance, inst.ballot, inst.lb.clientProposals, ir.cmds, len(ir.cmds))
 		}
-		if notInQuorum == r.N/2 {
+		if notInQuorum == r.N/3 {
 			//this is to prevent defer cycles
 			if present, dq, _ := deferredByInstance(tpar.Replica, tpar.Instance); present {
 				if inst.lb.possibleQuorum[dq] {
@@ -1788,7 +1787,7 @@ func (r *Replica) handleTryPreAcceptReply(tpar *epaxosproto.TryPreAcceptReply) {
 				}
 			}
 		}
-		if inst.lb.tpaOKs >= r.N/2 {
+		if inst.lb.tpaOKs >= r.N/3 {
 			//defer recovery and update deferred information
 			updateDeferred(tpar.Replica, tpar.Instance, tpar.ConflictReplica, tpar.ConflictInstance)
 			inst.lb.tryingToPreAccept = false
