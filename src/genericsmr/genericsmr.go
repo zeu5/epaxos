@@ -424,6 +424,18 @@ func (r *Replica) SendMsgMaster(peerId int32, code uint8, msg fastrpc.Serializab
 	r.MasterWriter.Flush()
 }
 
+func (r *Replica) SendMsgMasterNoFlush(peerId int32, code uint8, msg fastrpc.Serializable) {
+	var b [4]byte
+	bs := b[:4]
+
+	dlog.Printf("Sending message to master of type %d to %d", code, peerId)
+
+	binary.LittleEndian.PutUint32(bs, uint32(peerId))
+	r.MasterWriter.Write(bs)
+	r.MasterWriter.WriteByte(code)
+	msg.Marshal(r.MasterWriter)
+}
+
 func (r *Replica) SendMsgSlaveCheck(peerId int32, code uint8, msg fastrpc.Serializable) {
 	if r.Slave {
 		r.SendMsgMaster(peerId, code, msg)

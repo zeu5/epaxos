@@ -304,7 +304,11 @@ func (r *Replica) bcastSkip(startInstance int32, endInstance int32, exceptReplic
 			continue
 		}
 		sent++
-		r.SendMsgSlaveCheck(q, r.skipRPC, args)
+		if r.Slave {
+			r.SendMsgMasterNoFlush(q, r.skipRPC, args)
+		} else {
+			r.SendMsgNoFlush(q, r.skipRPC, args)
+		}
 	}
 }
 
@@ -506,7 +510,7 @@ func (r *Replica) timerHelper(ds *DelayedSkip) {
 }
 
 func (r *Replica) handleAccept(accept *menciusproto.Accept) {
-	// flush := true
+	flush := true
 	inst := r.instanceSpace[accept.Instance]
 
 	if inst != nil && inst.ballot > accept.Ballot {
@@ -523,11 +527,11 @@ func (r *Replica) handleAccept(accept *menciusproto.Accept) {
 			skipEnd -= int32(r.N)
 		}
 		if r.skipsWaiting < MAX_SKIPS_WAITING {
-			//start a timer, waiting for a propose to arrive and fill this hole
-			// go r.timerHelper(&DelayedSkip{skipEnd})
-			//r.delayedSkipChan <- &DelayedSkip{accept, skipStart}
+			// start a timer, waiting for a propose to arrive and fill this hole
+			go r.timerHelper(&DelayedSkip{skipEnd})
+			// r.delayedSkipChan <- &DelayedSkip{accept, skipStart}
 			r.skipsWaiting++
-			// flush = false
+			flush = false
 		}
 		r.instanceSpace[r.crtInstance] = &Instance{true,
 			int(skipEnd-r.crtInstance)/r.N + 1,
@@ -582,13 +586,17 @@ func (r *Replica) handleAccept(accept *menciusproto.Accept) {
 		dlog.Printf("Skipping!!\n")
 		r.bcastSkip(skipStart, skipEnd, accept.LeaderId)
 		r.updateBlocking(skipStart)
-		// if flush {
-		// 	for _, w := range r.PeerWriters {
-		// 		if w != nil {
-		// 			w.Flush()
-		// 		}
-		// 	}
-		// }
+		if flush {
+			if r.Slave {
+				r.MasterWriter.Flush()
+			} else {
+				for _, w := range r.PeerWriters {
+					if w != nil {
+						w.Flush()
+					}
+				}
+			}
+		}
 	} else {
 		r.updateBlocking(accept.Instance)
 	}
@@ -596,9 +604,13 @@ func (r *Replica) handleAccept(accept *menciusproto.Accept) {
 
 func (r *Replica) handleDelayedSkip(delayedSkip *DelayedSkip) {
 	r.skipsWaiting--
-	for _, w := range r.PeerWriters {
-		if w != nil {
-			w.Flush()
+	if r.Slave {
+		r.MasterWriter.Flush()
+	} else {
+		for _, w := range r.PeerWriters {
+			if w != nil {
+				w.Flush()
+			}
 		}
 	}
 }

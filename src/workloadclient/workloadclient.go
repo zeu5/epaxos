@@ -7,7 +7,6 @@ import (
 	"genericsmrproto"
 	"log"
 	"masterproto"
-	"math/rand"
 	"net"
 	"net/rpc"
 	"runtime"
@@ -25,8 +24,6 @@ func main() {
 	flag.Parse()
 
 	runtime.GOMAXPROCS(2)
-
-	randObj := rand.New(rand.NewSource(4123))
 
 	master, err := rpc.DialHTTP("tcp", fmt.Sprintf("%s:%d", *masterAddr, *masterPort))
 	if err != nil {
@@ -61,7 +58,7 @@ func main() {
 
 	args := genericsmrproto.Propose{id, state.Command{state.PUT, 21, 45}, 0}
 
-	r := randObj.Intn(N)
+	r := 0
 	reqs[r]++
 
 	fmt.Printf("Sending first request to replica %d\n", r)
@@ -72,7 +69,7 @@ func main() {
 
 	args = genericsmrproto.Propose{id, state.Command{state.PUT, 21, 46}, 0}
 
-	r = randObj.Intn(N)
+	r = 2
 	reqs[r]++
 
 	fmt.Printf("Sending second request to replica %d\n", r)

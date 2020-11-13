@@ -52,11 +52,13 @@ func NewCommitGraceTimeout(const_timeout uint64) *CommitGraceTimeoutS {
 	}
 }
 
-func (c *CommitGraceTimeoutS) Check(timeout uint64) bool {
+func (c *CommitGraceTimeoutS) Check(_ uint64) bool {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	return c.flag || c.timeout <= timeout
+	flag := c.flag
+	c.flag = false
+	return flag
 }
 
 func (c *CommitGraceTimeoutS) EnableFlag() {
@@ -333,9 +335,9 @@ func (r *Replica) run() {
 	}
 
 	// Sending message after connecting to master and clients
-	if r.Slave {
-		r.sendTimeoutMessage()
-	}
+	// if r.Slave {
+	// 	r.sendTimeoutMessage()
+	// }
 
 	if r.Id == 0 {
 		//init quorum read lease
@@ -515,7 +517,7 @@ func (r *Replica) executeCommands() {
 							dlog.Printf("Adding instance : (%d, %d) for recovery", int32(q), inst)
 							r.instancesToRecover <- &instanceId{int32(q), inst}
 							timeout[q] = 0
-							CommitGraceTimeout.DisableFlag()
+							// CommitGraceTimeout.DisableFlag()
 						}
 					} else {
 						problemInstance[q] = inst

@@ -165,7 +165,18 @@ func (master *Master) waitForReplicaConnections() {
 	}
 
 	for rid, reader := range master.readers {
+		// Sending timeout messages initially to each replica
+		go master.timeoutSender(rid)
 		go master.replicaListener(rid, reader)
+	}
+}
+
+func (master *Master) timeoutSender(rid int) {
+	time.Sleep(5 * time.Second)
+	log.Printf("Sending timeout messages for replica %d", rid)
+	for i := 0; i < 10; i++ {
+		msg := &epaxosproto.TimeoutMessage{}
+		master.controller.NotifyMessage(&mastercontrol.Message{0, rid, rid, 19, msg})
 	}
 }
 
