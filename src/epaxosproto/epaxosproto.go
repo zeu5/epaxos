@@ -4,7 +4,9 @@ import (
 	"state"
 )
 
-type TimeoutMessage struct{}
+type TimeoutMessage struct {
+	Val int32
+}
 
 type Prepare struct {
 	LeaderId int32

@@ -14,14 +14,65 @@ type byteReader interface {
 	ReadByte() (c byte, err error)
 }
 
-func (t *TimeoutMessage) New() fastrpc.Serializable {
+func (t *TimeoutMessage) BinarySize() (nbytes int, sizeKnown bool) {
+	return 4, true
+}
+
+type TimeoutMessageCache struct {
+	mu    sync.Mutex
+	cache []*TimeoutMessage
+}
+
+func NewTimeoutMessageCache() *TimeoutMessageCache {
+	c := &TimeoutMessageCache{}
+	c.cache = make([]*TimeoutMessage, 0)
+	return c
+}
+
+func (p *TimeoutMessageCache) Get() *TimeoutMessage {
+	var t *TimeoutMessage
+	p.mu.Lock()
+	if len(p.cache) > 0 {
+		t = p.cache[len(p.cache)-1]
+		p.cache = p.cache[0:(len(p.cache) - 1)]
+	}
+	p.mu.Unlock()
+	if t == nil {
+		t = &TimeoutMessage{}
+	}
+	return t
+}
+
+func (p *TimeoutMessageCache) Put(t *TimeoutMessage) {
+	p.mu.Lock()
+	p.cache = append(p.cache, t)
+	p.mu.Unlock()
+}
+
+func (p *TimeoutMessage) New() fastrpc.Serializable {
 	return new(TimeoutMessage)
 }
 
 func (t *TimeoutMessage) Marshal(wire io.Writer) {
+	var b [4]byte
+	var bs []byte
+	bs = b[:4]
+	tmp32 := t.Val
+	bs[0] = byte(tmp32)
+	bs[1] = byte(tmp32 >> 8)
+	bs[2] = byte(tmp32 >> 16)
+	bs[3] = byte(tmp32 >> 24)
+	wire.Write(bs)
 }
 
-func (t *TimeoutMessage) Unmarshal(r io.Reader) error {
+func (t *TimeoutMessage) Unmarshal(wire io.Reader) error {
+	var b [4]byte
+	var bs []byte
+	bs = b[:4]
+	if _, err := io.ReadAtLeast(wire, bs, 4); err != nil {
+		return err
+	}
+	t.Val = int32((uint32(bs[0]) | (uint32(bs[1]) << 8) | (uint32(bs[2]) << 16) | (uint32(bs[3]) << 24)))
 	return nil
 }
 

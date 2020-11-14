@@ -175,7 +175,7 @@ func (master *Master) timeoutSender(rid int) {
 	time.Sleep(5 * time.Second)
 	log.Printf("Sending timeout messages for replica %d", rid)
 	for i := 0; i < 10; i++ {
-		msg := &epaxosproto.TimeoutMessage{}
+		msg := &epaxosproto.TimeoutMessage{Val: 10}
 		master.controller.NotifyMessage(&mastercontrol.Message{0, rid, rid, 19, msg})
 	}
 }
